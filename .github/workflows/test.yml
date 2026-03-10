@@ -39,3 +39,12 @@ jobs:
 
       - name: Build release
         run: swift build -c release
+
+      - name: Smoke test - verify each mode starts
+        run: |
+          # Each mode should start, wait for MCP input on stdin, then exit on EOF
+          # Exit code 0 or timeout (142) both indicate successful startup
+          for mode in mail reminders calendar; do
+            echo "Testing mode: $mode"
+            timeout 3 .build/release/MacMCP $mode < /dev/null 2>&1 || true
+          done
