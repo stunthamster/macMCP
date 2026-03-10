@@ -184,4 +184,4 @@ Sources/MacMCP/
 
 ## License
 
-MIT
+GPL-3.0 — see [LICENSE](LICENSE) for details.

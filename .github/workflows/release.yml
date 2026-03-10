@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build release (arm64)
+        run: swift build -c release --arch arm64
+
+      - name: Save arm64 binary
+        run: cp .build/release/MacMCP /tmp/MacMCP-arm64
+
+      - name: Build release (x86_64)
+        run: swift build -c release --arch x86_64
+
+      - name: Save x86_64 binary
+        run: cp .build/release/MacMCP /tmp/MacMCP-x86_64
+
+      - name: Create universal binary
+        run: |
+          lipo -create /tmp/MacMCP-arm64 /tmp/MacMCP-x86_64 -output /tmp/MacMCP
+          lipo -info /tmp/MacMCP
+
+      - name: Strip binary
+        run: strip /tmp/MacMCP
+
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
+      - name: Package artifacts
+        run: |
+          mkdir -p staging
+          cp /tmp/MacMCP staging/
+          cp README.md staging/
+          cp LICENSE staging/ 2>/dev/null || true
+
+          cd staging
+          tar czf "../MacMCP-${VERSION}-macos-universal.tar.gz" .
+          cd ..
+
+      - name: Package arch-specific binaries
+        run: |
+          # arm64
+          mkdir -p staging-arm64
+          cp /tmp/MacMCP-arm64 staging-arm64/MacMCP
+          cp README.md staging-arm64/
+          cp LICENSE staging-arm64/ 2>/dev/null || true
+          cd staging-arm64
+          tar czf "../MacMCP-${VERSION}-macos-arm64.tar.gz" .
+          cd ..
+
+          # x86_64
+          mkdir -p staging-x86_64
+          cp /tmp/MacMCP-x86_64 staging-x86_64/MacMCP
+          cp README.md staging-x86_64/
+          cp LICENSE staging-x86_64/ 2>/dev/null || true
+          cd staging-x86_64
+          tar czf "../MacMCP-${VERSION}-macos-x86_64.tar.gz" .
+          cd ..
+
+      - name: Generate checksums
+        run: |
+          shasum -a 256 MacMCP-${VERSION}-*.tar.gz > checksums-${VERSION}.txt
+          cat checksums-${VERSION}.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_VERSION: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG_VERSION" \
+            --title "$TAG_VERSION" \
+            --generate-notes \
+            MacMCP-${TAG_VERSION}-macos-universal.tar.gz \
+            MacMCP-${TAG_VERSION}-macos-arm64.tar.gz \
+            MacMCP-${TAG_VERSION}-macos-x86_64.tar.gz \
+            checksums-${TAG_VERSION}.txt
